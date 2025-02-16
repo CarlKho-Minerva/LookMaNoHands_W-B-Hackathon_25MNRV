@@ -77,11 +77,15 @@ def perform_search_sync(query: str) -> List[str]:
         # Connect to existing browser or create new connection
         if not browser_instance:
             try:
-                browser_instance = playwright_instance.chromium.connect_over_cdp(WEBSOCKET_URL)
+                browser_instance = playwright_instance.chromium.connect_over_cdp(
+                    WEBSOCKET_URL
+                )
                 logger.debug("Connected to local browser")
             except Exception as e:
                 logger.error(f"Failed to connect to browser: {str(e)}")
-                return ["Failed to connect to browser. Make sure Brave is running with --remote-debugging-port=9222"]
+                return [
+                    "Failed to connect to browser. Make sure Brave is running with --remote-debugging-port=9222"
+                ]
 
         # Create a new context if none exists
         try:
@@ -161,7 +165,7 @@ async def perform_search(query: str) -> List[str]:
     return await loop.run_in_executor(thread_pool, perform_search_sync, query)
 
 
-async def perform_search_function(
+async def start_web_search_function(
     function_name: str,
     tool_call_id: str,
     args: dict,
@@ -169,7 +173,7 @@ async def perform_search_function(
     context: Optional[dict],
     result_callback: callable,
 ) -> None:
-    """Execute the search function and format results."""
+    """Execute the initial search function and format results."""
     try:
         search_results = await perform_search(args["query"])
         success = len(search_results) > 0 and search_results[0] != "No results found"
@@ -177,10 +181,37 @@ async def perform_search_function(
             "results": search_results,
             "query": args["query"],
             "success": success,
+            "is_first_search": True,
         }
         await result_callback(formatted_results)
     except Exception as e:
-        logger.error(f"Search function error: {str(e)}")
+        logger.error(f"Initial search function error: {str(e)}")
+        await result_callback(
+            {"error": str(e), "query": args.get("query", "unknown"), "success": False}
+        )
+
+
+async def perform_next_search_function(
+    function_name: str,
+    tool_call_id: str,
+    args: dict,
+    llm: GeminiMultimodalLiveLLMService,
+    context: Optional[dict],
+    result_callback: callable,
+) -> None:
+    """Execute subsequent search function and format results."""
+    try:
+        search_results = await perform_search(args["query"])
+        success = len(search_results) > 0 and search_results[0] != "No results found"
+        formatted_results = {
+            "results": search_results,
+            "query": args["query"],
+            "success": success,
+            "is_subsequent_search": True,
+        }
+        await result_callback(formatted_results)
+    except Exception as e:
+        logger.error(f"Subsequent search function error: {str(e)}")
         await result_callback(
             {"error": str(e), "query": args.get("query", "unknown"), "success": False}
         )
@@ -190,8 +221,8 @@ tools = [
     {
         "function_declarations": [
             {
-                "name": "perform_web_search",
-                "description": "Control the browser to perform a DuckDuckGo search. Call this function whenever a user asks to search for something.",
+                "name": "start_web_search",
+                "description": "Start a new DuckDuckGo search session. Call this for the first search when no browser is open yet.",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -202,7 +233,21 @@ tools = [
                     },
                     "required": ["query"],
                 },
-            }
+            },
+            {
+                "name": "perform_next_search",
+                "description": "Perform another search in the existing browser session. Call this for subsequent searches.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "The search query to type into the search bar",
+                        }
+                    },
+                    "required": ["query"],
+                },
+            },
         ]
     }
 ]
@@ -211,11 +256,12 @@ system_instruction = """
 You are a multimodal AI assistant that directly controls a web browser using AgentQL.
 You can see the user's screen and actively perform web searches by controlling their browser.
 
-IMPORTANT: When users request a search, you MUST call the perform_web_search function
-with their query. This function will control the browser and perform the search.
+IMPORTANT: For searches, you must use these functions:
+1. For the FIRST search in a session, use start_web_search
+2. For ALL SUBSEQUENT searches, use perform_next_search
 
 When users ask you to search:
-1. ALWAYS call perform_web_search with their query
+1. Choose the correct function based on whether it's the first or subsequent search
 2. While the search is happening, narrate what you observe:
    - The query being typed into the search bar
    - The search button being clicked
@@ -226,16 +272,22 @@ When users ask you to search:
    - Ask if they want to try a different search
 
 Remember:
-- You MUST use perform_web_search function for ALL searches
+- Use start_web_search for the first search only
+- Use perform_next_search for all subsequent searches
 - Describe what you see on the screen in real-time
 - If the search interface isn't visible, ask the user to share their screen
 - Guide users through the visual search experience
 
 Example interaction:
 User: "Search for dogs"
-Assistant: "I'll search for dogs using the browser. Let me call perform_web_search..."
-[Calls perform_web_search with query="dogs"]
+Assistant: "I'll start a new search for dogs using the browser..."
+[Calls start_web_search with query="dogs"]
+
+User: "Now search for cats"
+Assistant: "I'll perform another search for cats..."
+[Calls perform_next_search with query="cats"]
 """
+
 
 # Cleanup function to close browser and playwright on exit
 def cleanup():
@@ -254,9 +306,12 @@ def cleanup():
         except Exception as e:
             logger.error(f"Error stopping Playwright: {str(e)}")
 
+
 # Register cleanup function to run on program exit
 import atexit
+
 atexit.register(cleanup)
+
 
 async def main():
     google_api_key = os.getenv("GOOGLE_API_KEY")
@@ -298,8 +353,9 @@ async def main():
             top_p=0.95,
         )
 
-        # Register the search function
-        llm.register_function("perform_web_search", perform_search_function)
+        # Register the search functions
+        llm.register_function("start_web_search", start_web_search_function)
+        llm.register_function("perform_next_search", perform_next_search_function)
 
         async def on_model_response(response):
             try:
