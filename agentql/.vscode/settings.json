@@ -1,0 +1,41 @@
+{
+  "[python]": {
+    "editor.defaultFormatter": "ms-python.black-formatter",
+    "editor.codeActionsOnSave": {
+      "source.organizeImports": "explicit"
+    }
+  },
+  "[json]": {
+    "editor.defaultFormatter": "vscode.json-language-features"
+  },
+  "[javascriptreact]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[typescript]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "eslint.workingDirectories": [
+    {
+      "directory": "./examples/js",
+      "changeProcessCWD": true
+    }
+  ],
+  "editor.formatOnSave": true,
+  "files.insertFinalNewline": true,
+  "black-formatter.args": [
+    "--line-length=100"
+  ],
+  "isort.args": [
+    "--line-length=100",
+    "--wrap-length=100",
+    "--multi-line=3",
+    "--trailing-comma",
+    "--profile=black"
+  ],
+  "pylint.importStrategy": "fromEnvironment",
+  "pylint.args": [
+    "--rcfile=./examples/python/.pylintrc"
+  ],
+  "python.analysis.typeCheckingMode": "standard",
+  "editor.rulers": [100]
+}
