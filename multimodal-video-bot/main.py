@@ -38,6 +38,13 @@ from pipecat.transports.services.daily import DailyParams, DailyTransport
 # DuckDuckGo URL
 URL = "https://duckduckgo.com/"
 
+# The URL of the external or existing browser you wish to connect
+WEBSOCKET_URL = "http://localhost:9222"
+
+# Global instances
+browser_instance = None
+playwright_instance = None
+
 load_dotenv(override=True)
 
 logger.remove(0)
@@ -58,63 +65,90 @@ async def wait_for_rate_limit():
 
 
 def perform_search_sync(query: str) -> List[str]:
-    """Synchronous function to perform the search using AgentQL."""
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=False)  # Show browser for demo
+    """Synchronous function to perform the search using AgentQL with local browser."""
+    global browser_instance, playwright_instance
+
+    try:
+        # Initialize Playwright if not already done
+        if not playwright_instance:
+            playwright_instance = sync_playwright().start()
+            logger.debug("Started Playwright")
+
+        # Connect to existing browser or create new connection
+        if not browser_instance:
+            try:
+                browser_instance = playwright_instance.chromium.connect_over_cdp(WEBSOCKET_URL)
+                logger.debug("Connected to local browser")
+            except Exception as e:
+                logger.error(f"Failed to connect to browser: {str(e)}")
+                return ["Failed to connect to browser. Make sure Brave is running with --remote-debugging-port=9222"]
+
+        # Create a new context if none exists
         try:
-            page = agentql.wrap(browser.new_page())
-            logger.debug("Navigating to DuckDuckGo...")
-            page.goto(URL)
-            page.wait_for_timeout(1000)  # Let page load visibly
+            context = browser_instance.contexts[0]
+        except IndexError:
+            context = browser_instance.new_context()
+            logger.debug("Created new browser context")
 
-            # Get and use the search bar
-            logger.debug("Looking for search bar...")
-            search_bar = page.get_by_prompt("the search bar")
-            if not search_bar:
-                logger.error("Could not find search bar")
-                return ["Could not find search bar"]
+        # Create a new tab in the browser window
+        try:
+            page = context.new_page()
+            page = agentql.wrap(page)
+            logger.debug("Created new browser tab")
+        except Exception as e:
+            logger.error(f"Failed to create new page: {str(e)}")
+            return ["Failed to create new browser tab"]
 
-            # Fill the search query with visual typing
-            logger.debug(f"Typing search query: {query}")
-            search_bar.press_sequentially(query)  # Type with visible keystrokes
-            page.wait_for_timeout(500)  # Pause for visual effect
+        logger.debug("Navigating to DuckDuckGo...")
+        page.goto(URL)
+        page.wait_for_timeout(1000)  # Let page load visibly
 
-            # Try to find and click search button, otherwise press Enter
-            logger.debug("Looking for search button...")
-            search_button = page.get_by_prompt("the search button")
-            if search_button:
-                logger.debug("Clicking search button")
-                search_button.click()
-            else:
-                logger.debug("No button found, pressing Enter")
-                search_bar.press("Enter")
+        # Get and use the search bar
+        logger.debug("Looking for search bar...")
+        search_bar = page.get_by_prompt("the search bar")
+        if not search_bar:
+            logger.error("Could not find search bar")
+            return ["Could not find search bar"]
 
-            # Wait for results to load with visual feedback
-            logger.debug("Waiting for results to load...")
-            page.wait_for_timeout(2000)
+        # Fill the search query with visual typing
+        logger.debug(f"Typing search query: {query}")
+        search_bar.press_sequentially(query)  # Type with visible keystrokes
+        page.wait_for_timeout(500)  # Pause for visual effect
 
-            # Extract search results
-            logger.debug("Extracting search results...")
-            js_query = (
-                "() => Array.from(document.querySelectorAll('.result__title'))"
-                ".slice(0, 3).map(el => el.textContent.trim())"
-                ".filter(Boolean)"
-            )
-            results = page.evaluate(js_query)
+        # Try to find and click search button, otherwise press Enter
+        logger.debug("Looking for search button...")
+        search_button = page.get_by_prompt("the search button")
+        if search_button:
+            logger.debug("Clicking search button")
+            search_button.click()
+        else:
+            logger.debug("No button found, pressing Enter")
+            search_bar.press("Enter")
 
-            # Log results for debugging
-            if results:
-                logger.debug(f"Found {len(results)} results")
-            else:
-                logger.debug("No results found")
+        # Wait for results to load with visual feedback
+        logger.debug("Waiting for results to load...")
+        page.wait_for_timeout(2000)
 
-            # Keep browser open slightly longer to show results
-            page.wait_for_timeout(1000)
-            return results if results else ["No results found"]
+        # Extract search results
+        logger.debug("Extracting search results...")
+        js_query = (
+            "() => Array.from(document.querySelectorAll('.result__title'))"
+            ".slice(0, 3).map(el => el.textContent.trim())"
+            ".filter(Boolean)"
+        )
+        results = page.evaluate(js_query)
 
-        finally:
-            logger.debug("Closing browser")
-            browser.close()
+        # Log results for debugging
+        if results:
+            logger.debug(f"Found {len(results)} results")
+        else:
+            logger.debug("No results found")
+
+        return results if results else ["No results found"]
+
+    except Exception as e:
+        logger.error(f"Search error: {str(e)}")
+        return [f"Error performing search: {str(e)}"]
 
 
 # Thread pool for running sync code
@@ -203,6 +237,26 @@ Assistant: "I'll search for dogs using the browser. Let me call perform_web_sear
 [Calls perform_web_search with query="dogs"]
 """
 
+# Cleanup function to close browser and playwright on exit
+def cleanup():
+    global browser_instance, playwright_instance
+    if browser_instance:
+        try:
+            browser_instance.close()
+            logger.debug("Closed browser connection")
+        except Exception as e:
+            logger.error(f"Error closing browser: {str(e)}")
+
+    if playwright_instance:
+        try:
+            playwright_instance.stop()
+            logger.debug("Stopped Playwright")
+        except Exception as e:
+            logger.error(f"Error stopping Playwright: {str(e)}")
+
+# Register cleanup function to run on program exit
+import atexit
+atexit.register(cleanup)
 
 async def main():
     google_api_key = os.getenv("GOOGLE_API_KEY")
