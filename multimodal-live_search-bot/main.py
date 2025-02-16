@@ -79,7 +79,7 @@ async def main():
             [
                 {
                     "role": "user",
-                    "content": "Start by greeting me warmly and introducing me to live search by Hyperbolic Labs and mention the current day. Tell me that I can ask you about any place in the world and you will provide me with the latest news. Then, ask me which place I would like to know about.",
+                    "content": "Start by greeting me warmly and introducing me to live search by Carl Kho and mention the current day. Tell me that I can ask you about any place in the world and you will provide me with the latest news. Then, ask me which place I would like to know about.",
                 }
             ],
         )

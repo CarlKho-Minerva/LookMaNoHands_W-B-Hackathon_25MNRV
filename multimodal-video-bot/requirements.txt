@@ -42,6 +42,9 @@ boto3
 numpy
 python-dateutil
 
+# Weave
+weave-python>=0.22.1
+
 
 # # If buggy, remove versions and try again (Carl - 2025 Feb 10)
 

@@ -23,6 +23,7 @@ from runner import configure
 from playwright.async_api import async_playwright
 from playwright.sync_api import sync_playwright
 import agentql
+import weave
 
 from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.audio.vad.vad_analyzer import VADParams
@@ -54,6 +55,8 @@ logger.add(sys.stderr, level="DEBUG")
 RATE_LIMIT_DELAY = 1.0  # seconds between API calls
 last_api_call = 0
 
+# Initialize Weave for tracking
+weave.init("multimodal-search-assistant")
 
 async def wait_for_rate_limit():
     """Ensure we don't exceed API rate limits"""
@@ -64,6 +67,7 @@ async def wait_for_rate_limit():
     last_api_call = time.time()
 
 
+@weave.op()
 def perform_search_sync(query: str) -> List[str]:
     """Synchronous function to perform the search using AgentQL with local browser."""
     global browser_instance, playwright_instance
@@ -159,12 +163,14 @@ def perform_search_sync(query: str) -> List[str]:
 thread_pool = ThreadPoolExecutor(max_workers=2)
 
 
+@weave.op()
 async def perform_search(query: str) -> List[str]:
     """Async wrapper that runs the sync search in a thread."""
     loop = asyncio.get_running_loop()
     return await loop.run_in_executor(thread_pool, perform_search_sync, query)
 
 
+@weave.op()
 async def start_web_search_function(
     function_name: str,
     tool_call_id: str,
@@ -191,6 +197,7 @@ async def start_web_search_function(
         )
 
 
+@weave.op()
 async def perform_next_search_function(
     function_name: str,
     tool_call_id: str,
@@ -289,8 +296,9 @@ Assistant: "I'll perform another search for cats..."
 """
 
 
-# Cleanup function to close browser and playwright on exit
+@weave.op()
 def cleanup():
+    """Cleanup function to close browser and playwright on exit."""
     global browser_instance, playwright_instance
     if browser_instance:
         try:
@@ -311,6 +319,41 @@ def cleanup():
 import atexit
 
 atexit.register(cleanup)
+
+
+@weave.op()
+async def on_model_response(response):
+    try:
+        logger.debug("=== RESPONSE CONFIRMATION ===")
+        logger.debug(f"Response: {response}")
+        logger.debug("============================")
+    except Exception as e:
+        logger.error(f"Error in model response handler: {e}")
+
+
+@weave.op()
+async def on_model_transcription(text):
+    try:
+        if text:
+            logger.debug(f"Transcribed text: {text}")
+    except Exception as e:
+        logger.error(f"Error in transcription handler: {e}")
+
+
+@weave.op()
+async def on_first_participant_joined(transport, participant):
+    # Enable both camera and screenshare
+    await transport.capture_participant_video(
+        participant["id"], framerate=1, video_source="screenVideo"
+    )
+    await transport.capture_participant_video(
+        participant["id"], framerate=1, video_source="camera"
+    )
+    await task.queue_frames([context_aggregator.user().get_context_frame()])
+    await asyncio.sleep(3)
+    logger.debug("Unpausing audio and video")
+    llm.set_audio_input_paused(False)
+    llm.set_video_input_paused(False)
 
 
 async def main():
@@ -357,24 +400,10 @@ async def main():
         llm.register_function("start_web_search", start_web_search_function)
         llm.register_function("perform_next_search", perform_next_search_function)
 
-        async def on_model_response(response):
-            try:
-                logger.debug("=== RESPONSE CONFIRMATION ===")
-                logger.debug(f"Response: {response}")
-                logger.debug("============================")
-            except Exception as e:
-                logger.error(f"Error in model response handler: {e}")
-
         logger.debug("Registering model response callback...")
         llm.on_model_response = on_model_response
 
-        async def on_model_transcription(text):
-            try:
-                if text:
-                    logger.debug(f"Transcribed text: {text}")
-            except Exception as e:
-                logger.error(f"Error in transcription handler: {e}")
-
+        logger.debug("Registering model transcription callback...")
         llm.on_model_transcription = on_model_transcription
 
         welcome_msg = (
