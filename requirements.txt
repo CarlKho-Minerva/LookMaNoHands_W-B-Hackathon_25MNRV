@@ -2,3 +2,4 @@ together
 python-dotenv
 weave
 openai
+llama-index

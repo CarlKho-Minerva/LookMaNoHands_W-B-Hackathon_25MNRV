@@ -1,0 +1,44 @@
+{
+  "os": "macOS-14.5-arm64-arm-64bit",
+  "python": "CPython 3.11.11",
+  "startedAt": "2025-02-16T00:08:26.760731Z",
+  "program": "/Users/cvk/Downloads/[CODE] Local Projects/RaS_W-B-Hackathon_25MNRV/QuickstartS.ipynb",
+  "codePath": "QuickstartS.ipynb",
+  "git": {
+    "remote": "https://github.com/CarlKho-Minerva/RaS_W-B-Hackathon_25MNRV.git",
+    "commit": "a279cbc3d139ad565c7438ed091f0a03b138789e"
+  },
+  "email": "carlkho.cvk@gmail.com",
+  "root": "/Users/cvk/Downloads/[CODE] Local Projects/RaS_W-B-Hackathon_25MNRV",
+  "host": "CVK-M2-Air.local",
+  "executable": "/opt/homebrew/opt/python@3.11/bin/python3.11",
+  "codePathLocal": "QuickstartS.ipynb",
+  "cpu_count": 8,
+  "cpu_count_logical": 8,
+  "disk": {
+    "/": {
+      "total": "245107195904",
+      "used": "169168359424"
+    },
+    "/System/Volumes/Data": {
+      "total": "245107195904",
+      "used": "169168359424"
+    }
+  },
+  "memory": {
+    "total": "8589934592"
+  },
+  "cpu": {
+    "count": 8,
+    "countLogical": 8
+  },
+  "apple": {
+    "name": "Apple M2",
+    "ecpuCores": 4,
+    "pcpuCores": 4,
+    "gpuCores": 8,
+    "memoryGb": 8,
+    "swapTotalBytes": "2147483648",
+    "ramTotalBytes": "8589934592"
+  }
+}
