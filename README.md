@@ -2,6 +2,9 @@
 
 A powerful AI-powered search assistant that combines voice interaction, screen sharing, and live browser control to provide an interactive and intuitive search experience.
 
+![(2) Look ma no Hands  Voice → Browser Control 00-01-55](https://github.com/user-attachments/assets/00ce67a2-05cd-484e-b335-e492b52b60fe)
+[Demo Video](https://www.youtube.com/watch?v=j96sa4azdtM)
+
 ## Features
 
 ### 1. Interactive Visual Search
